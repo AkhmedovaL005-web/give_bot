@@ -3,6 +3,8 @@ import re
 from aiogram import Router, Bot, F
 from aiogram.types import Message
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 import database as db
 from config import (
@@ -399,8 +401,6 @@ class AddKeywordState(StatesGroup):
     waiting_key_code = State()
 
 
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup as SG
 
 
 @router.message(Command("addkeyword"))
