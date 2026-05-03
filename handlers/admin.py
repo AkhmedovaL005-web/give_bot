@@ -918,30 +918,34 @@ async def setbal_confirm(callback: CallbackQuery):
     import aiosqlite
     from config import DB_FILE
 
-    async with aiosqlite.connect(DB_FILE) as conn:
-        # Avval bu odamning barcha referrallarini o'chirish
-        await conn.execute("DELETE FROM referrals WHERE referrer_id=?", (target_id,))
-        # Yangi bal qo'shish (soxta referrallar bilan)
-        for i in range(new_bal):
-            fake_id = -(target_id * 10000 + i)
-            try:
-                await conn.execute(
-                    "INSERT OR IGNORE INTO referrals (referrer_id, referred_id) VALUES (?,?)",
-                    (target_id, fake_id)
-                )
-            except Exception:
-                pass
-        await conn.commit()
+    try:
+        async with aiosqlite.connect(DB_FILE, timeout=30) as conn:
+            await conn.execute("DELETE FROM referrals WHERE referrer_id=?", (target_id,))
+            for i in range(new_bal):
+                fake_id = -(target_id * 10000 + i)
+                try:
+                    await conn.execute(
+                        "INSERT OR IGNORE INTO referrals (referrer_id, referred_id) VALUES (?,?)",
+                        (target_id, fake_id)
+                    )
+                except Exception:
+                    pass
+            await conn.commit()
 
-    actual = await db.get_referral_count(target_id)
-    rank = await db.get_user_rank(target_id)
+        actual = await db.get_referral_count(target_id)
+        rank = await db.get_user_rank(target_id)
 
-    await callback.message.edit_text(
-        f"✅ <b>Bal yangilandi!</b>\n\n"
-        f"💰 Yangi bal: <b>{actual} ta</b>\n"
-        f"🏆 Yangi o'rni: <b>{rank}-o'rin</b>",
-        parse_mode="HTML"
-    )
+        await callback.message.edit_text(
+            f"✅ <b>Bal yangilandi!</b>\n\n"
+            f"💰 Yangi bal: <b>{actual} ta</b>\n"
+            f"🏆 Yangi o'rni: <b>{rank}-o'rin</b>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await callback.message.edit_text(
+            f"❌ Xato yuz berdi: {str(e)[:100]}\n"
+            f"Qayta urinib ko'ring."
+        )
 
 
 @router.callback_query(F.data == "setbal:cancel")
