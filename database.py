@@ -7,6 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 async def init_db():
+    import os
+    _db_dir = os.path.dirname(DB_FILE)
+    if _db_dir:
+        os.makedirs(_db_dir, exist_ok=True)
     async with aiosqlite.connect(DB_FILE, timeout=30) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
