@@ -12,7 +12,7 @@ CHECK_CHANNEL = True   # kanal tekshiruvi yoqildi
 
 ADMIN_IDS = [7201215484, 5845294124]
 
-DB_FILE = "/app/giveaway.db"
+DB_FILE = "/app/data/giveaway.db"
 BOT_USERNAME = "give_mebot"
 
 LEADERBOARD_HOURS = [6, 12, 18, 0]
