@@ -7,7 +7,7 @@ from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeCha
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN, ADMIN_IDS
-from database import init_db, init_guard_tables
+from database import init_db, init_guard_tables, init_group_admin_table
 from scheduler import setup_scheduler
 from handlers import user, admin, member, support, group_guard
 
@@ -53,6 +53,7 @@ async def main():
     # DB ni ishga tushirish
     await init_db()
     await init_guard_tables()
+    await init_group_admin_table()
 
     # Google Sheets ga ulanish
     from config import USE_GOOGLE_SHEETS, GOOGLE_CREDENTIALS_FILE, SPREADSHEET_ID
