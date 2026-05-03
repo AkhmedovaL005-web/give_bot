@@ -762,3 +762,87 @@ async def get_group_admins() -> list:
         ) as c:
             rows = await c.fetchall()
             return [r[0] for r in rows]
+
+# ─── KALIT SO'Z + ISHTIROKCHI ────────────────────────────────
+
+async def init_keyword_player_table():
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS keyword_players (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                keyword     TEXT NOT NULL,
+                player_id   INTEGER NOT NULL,
+                key_code    TEXT NOT NULL UNIQUE,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.commit()
+
+
+async def add_keyword_player(keyword: str, player_id: int, key_code: str) -> bool:
+    """Kalit so'z + ishtirokchi bog'lash"""
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        # key_code takrorlanmasin
+        async with db.execute(
+            "SELECT id FROM keyword_players WHERE key_code=?", (key_code,)
+        ) as c:
+            if await c.fetchone():
+                return False
+        await db.execute(
+            "INSERT INTO keyword_players (keyword, player_id, key_code) VALUES (?,?,?)",
+            (keyword.lower(), player_id, key_code)
+        )
+        await db.commit()
+        return True
+
+
+async def get_player_by_keyword(keyword: str):
+    """Kalit so'z bo'yicha ishtirokchini topish"""
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        async with db.execute(
+            "SELECT player_id, key_code FROM keyword_players WHERE keyword=?",
+            (keyword.lower(),)
+        ) as c:
+            return await c.fetchone()
+
+
+async def get_all_keyword_players():
+    """Barcha kalit so'z + ishtirokchilar"""
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        async with db.execute(
+            "SELECT keyword, player_id, key_code FROM keyword_players ORDER BY keyword"
+        ) as c:
+            return await c.fetchall()
+
+
+async def remove_keyword_player(key_code: str) -> bool:
+    """Kalit so'z + ishtirokchi o'chirish"""
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        async with db.execute(
+            "SELECT id FROM keyword_players WHERE key_code=?", (key_code,)
+        ) as c:
+            if not await c.fetchone():
+                return False
+        await db.execute("DELETE FROM keyword_players WHERE key_code=?", (key_code,))
+        await db.commit()
+        return True
+
+
+async def transfer_points_auto(from_id: int, to_id: int) -> int:
+    """Barcha ballarni avtomatik o'tkazish, nechta o'tkazilganini qaytaradi"""
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        # from_id ning barcha referrallarini to_id ga o'tkazish
+        async with db.execute(
+            "SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (from_id,)
+        ) as c:
+            count = (await c.fetchone())[0]
+        
+        if count == 0:
+            return 0
+        
+        await db.execute(
+            "UPDATE referrals SET referrer_id=? WHERE referrer_id=?",
+            (to_id, from_id)
+        )
+        await db.commit()
+        return count
