@@ -712,3 +712,49 @@ async def mark_user_backed_up(user_id: int):
             "UPDATE users SET backed_up=1 WHERE user_id=?", (user_id,)
         )
         await db.commit()
+
+# ─── GURUH VIP ADMINLARI ─────────────────────────────────────
+
+async def init_group_admin_table():
+    """Guruh adminlari jadvalini yaratish"""
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS group_admins (
+                user_id INTEGER PRIMARY KEY,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.commit()
+
+
+async def add_group_admin(user_id: int):
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO group_admins (user_id) VALUES (?)", (user_id,)
+        )
+        await db.commit()
+
+
+async def remove_group_admin(user_id: int):
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        await db.execute(
+            "DELETE FROM group_admins WHERE user_id=?", (user_id,)
+        )
+        await db.commit()
+
+
+async def is_group_admin_vip(user_id: int) -> bool:
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        async with db.execute(
+            "SELECT 1 FROM group_admins WHERE user_id=?", (user_id,)
+        ) as c:
+            return bool(await c.fetchone())
+
+
+async def get_group_admins() -> list:
+    async with aiosqlite.connect(DB_FILE, timeout=30) as db:
+        async with db.execute(
+            "SELECT user_id FROM group_admins ORDER BY added_at"
+        ) as c:
+            rows = await c.fetchall()
+            return [r[0] for r in rows]
