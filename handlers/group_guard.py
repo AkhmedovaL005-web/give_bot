@@ -31,6 +31,9 @@ async def is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     """Guruh admini ekanligini tekshirish"""
     if user_id in ADMIN_IDS:
         return True
+    # VIP guruh adminlari (botdan qo'shilgan)
+    if await db.is_group_admin_vip(user_id):
+        return True
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         return member.status in ('administrator', 'creator')
@@ -280,3 +283,64 @@ async def list_words(message: Message):
         return
     text = "\n".join(f"• {w}" for w in words)
     await message.answer(f"<b>Kalit sozlar:</b>\n{text}", parse_mode='HTML')
+
+@router.message(Command("addgroupadmin"))
+async def add_group_admin_cmd(message: Message, bot: Bot):
+    if not is_admin(message.from_user.id):
+        return
+    parts = message.text.split()
+    if len(parts) < 2 or not parts[1].lstrip('-').isdigit():
+        await message.answer(
+            "Format: /addgroupadmin 123456789\n"
+            "ID ni kiriting — o'sha odam guruhda cheklanmaydi."
+        )
+        return
+    user_id = int(parts[1])
+    await db.add_group_admin(user_id)
+
+    # Ismini topishga harakat qilamiz
+    try:
+        member = await bot.get_chat_member(message.chat.id if message.chat.id == -1003371929345 else message.chat.id, user_id)
+        name = member.user.full_name
+    except Exception:
+        u = await db.get_user(user_id)
+        name = u['full_name'] if u else str(user_id)
+
+    await message.answer(
+        f"✅ <b>{name}</b> (<code>{user_id}</code>) guruh VIP adminiga qo'shildi.\n"
+        f"Endi u guruhda cheklanmaydi.",
+        parse_mode='HTML'
+    )
+
+
+@router.message(Command("removegroupadmin"))
+async def remove_group_admin_cmd(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    parts = message.text.split()
+    if len(parts) < 2 or not parts[1].lstrip('-').isdigit():
+        await message.answer("Format: /removegroupadmin 123456789")
+        return
+    user_id = int(parts[1])
+    await db.remove_group_admin(user_id)
+    await message.answer(
+        f"❌ <code>{user_id}</code> guruh VIP adminlaridan olib tashlandi.",
+        parse_mode='HTML'
+    )
+
+
+@router.message(Command("groupadmins"))
+async def list_group_admins(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    admins = await db.get_group_admins()
+    if not admins:
+        await message.answer("Guruh VIP adminlari yo'q.\n\nQo'shish: /addgroupadmin ID")
+        return
+    lines = ["<b>Guruh VIP adminlari:</b>\n"]
+    for uid in admins:
+        u = await db.get_user(uid)
+        name = u['full_name'] if u else "—"
+        lines.append(f"• {name} — <code>{uid}</code>")
+    lines.append(f"\nO'chirish: /removegroupadmin ID")
+    await message.answer("\n".join(lines), parse_mode='HTML')
