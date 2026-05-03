@@ -63,6 +63,15 @@ async def send_dm(bot: Bot, user_id: int, text: str):
         pass
 
 
+async def _delete_after(msg, delay: int):
+    import asyncio
+    await asyncio.sleep(delay)
+    try:
+        await msg.delete()
+    except Exception:
+        pass
+
+
 async def warn_in_group(bot: Bot, chat_id: int, user_id: int, username: str, full_name: str, reason: str):
     """Guruhda ogohlantirish — 5 soniyada o'chadi"""
     import asyncio
@@ -73,8 +82,7 @@ async def warn_in_group(bot: Bot, chat_id: int, user_id: int, username: str, ful
             f"{mention}, {reason}",
             parse_mode='HTML'
         )
-        await asyncio.sleep(5)
-        await msg.delete()
+        asyncio.create_task(_delete_after(msg, 5))
     except Exception:
         pass
 
