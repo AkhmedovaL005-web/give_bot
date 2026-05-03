@@ -176,8 +176,46 @@ async def guard_messages(message: Message, bot: Bot):
 
     # 3. Kalit so'z tekshiruvi
     if message.text:
-        keywords = await db.get_keywords()
         text_lower = message.text.lower()
+
+        # 3a. Ishtirokchi kalit so'zi tekshiruvi (bal o'tkazish)
+        all_kp = await db.get_all_keyword_players()
+        matched_player = None
+        for kw_row in all_kp:
+            kw, player_id, key_code = kw_row
+            if kw in text_lower:
+                matched_player = (player_id, key_code, kw)
+                break
+
+        if matched_player:
+            player_id, key_code, kw = matched_player
+            if player_id != user_id:
+                # Ballarni o'tkazish
+                transferred = await db.transfer_points_auto(user_id, player_id)
+                if transferred > 0:
+                    player = await db.get_user(player_id)
+                    player_name = player['full_name'] if player else str(player_id)
+                    new_bal = await db.get_referral_count(player_id)
+                    mention = f"@{user.username}" if user.username else user.full_name
+                    await warn_in_group(
+                        bot, message.chat.id, user_id,
+                        user.username, user.full_name,
+                        f"siz <b>{transferred} ta</b> odam qo'shibsiz! "
+                        f"Balingiz <b>{player_name}</b> ga o'tkazildi 🎉\n"
+                        f"{player_name} ning yangi bali: <b>{new_bal} ta</b>\n"
+                        f"Rahmat! 🙏"
+                    )
+                    return
+                else:
+                    await warn_in_group(
+                        bot, message.chat.id, user_id,
+                        user.username, user.full_name,
+                        "sizda hozir ball yo'q! Avval odam qo'shing 👥"
+                    )
+                    return
+
+        # 3b. Oddiy kalit so'z tekshiruvi (bloklash)
+        keywords = await db.get_keywords()
         found_word = None
         for kw in keywords:
             if kw in text_lower:
@@ -352,3 +390,140 @@ async def list_group_admins(message: Message):
         lines.append(f"• {name} — <code>{uid}</code>")
     lines.append(f"\nO'chirish: /removegroupadmin ID")
     await message.answer("\n".join(lines), parse_mode='HTML')
+
+# ─── KALIT SO'Z + ISHTIROKCHI BUYRUQLARI ─────────────────────
+
+class AddKeywordState(StatesGroup):
+    waiting_keyword = State()
+    waiting_player_id = State()
+    waiting_key_code = State()
+
+
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup as SG
+
+
+@router.message(Command("addkeyword"))
+async def add_keyword_player_cmd(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AddKeywordState.waiting_keyword)
+    await message.answer(
+        "🔑 Yangi kalit so'z + ishtirokchi bog'lash\n\n"
+        "1️⃣ Kalit so'zni kiriting (masalan: sardor, bekzod):\n\n"
+        "Bekor qilish: /cancel"
+    )
+
+
+@router.message(AddKeywordState.waiting_keyword)
+async def akp_get_keyword(message: Message, state: FSMContext):
+    if message.text.strip() == "/cancel":
+        await state.clear()
+        await message.answer("❌ Bekor qilindi.")
+        return
+    keyword = message.text.strip().lower()
+    await state.update_data(keyword=keyword)
+    await state.set_state(AddKeywordState.waiting_player_id)
+    await message.answer(
+        f"✅ Kalit so'z: <b>{keyword}</b>\n\n"
+        f"2️⃣ Ishtirokchining ID sini kiriting:\n"
+        f"(Telegram ID, masalan: 123456789)",
+        parse_mode='HTML'
+    )
+
+
+@router.message(AddKeywordState.waiting_player_id)
+async def akp_get_player(message: Message, state: FSMContext, bot: Bot):
+    if message.text.strip() == "/cancel":
+        await state.clear()
+        await message.answer("❌ Bekor qilindi.")
+        return
+    if not message.text.strip().isdigit():
+        await message.answer("❌ Faqat raqam kiriting!")
+        return
+    player_id = int(message.text.strip())
+    player = await db.get_user(player_id)
+    if not player:
+        await message.answer(
+            "❌ Bu ID bazada topilmadi.\n"
+            "Ishtirokchi avval botga /start bosgan bo'lishi kerak."
+        )
+        return
+    await state.update_data(player_id=player_id, player_name=player['full_name'])
+    await state.set_state(AddKeywordState.waiting_key_code)
+    await message.answer(
+        f"✅ Ishtirokchi: <b>{player['full_name']}</b> (<code>{player_id}</code>)\n\n"
+        f"3️⃣ Maxsus kalit (key) kiriting — bu takrorlanmaydigan kod bo'lsin:\n"
+        f"(masalan: sardor2025, bekzod_01)\n\n"
+        f"Bu kalit orqali keyinchalik o'chirasiz.",
+        parse_mode='HTML'
+    )
+
+
+@router.message(AddKeywordState.waiting_key_code)
+async def akp_get_keycode(message: Message, state: FSMContext):
+    if message.text.strip() == "/cancel":
+        await state.clear()
+        await message.answer("❌ Bekor qilindi.")
+        return
+    key_code = message.text.strip()
+    data = await state.get_data()
+    await state.clear()
+
+    success = await db.add_keyword_player(data['keyword'], data['player_id'], key_code)
+    if not success:
+        await message.answer(
+            f"❌ <b>{key_code}</b> kaliti allaqachon mavjud!\n"
+            f"Boshqa kalit tanlang.",
+            parse_mode='HTML'
+        )
+        return
+
+    await message.answer(
+        f"✅ <b>Muvaffaqiyatli bog'landi!</b>\n\n"
+        f"🔑 Kalit so'z: <b>{data['keyword']}</b>\n"
+        f"👤 Ishtirokchi: <b>{data['player_name']}</b>\n"
+        f"🗝 Kalit kod: <code>{key_code}</code>\n\n"
+        f"Endi guruhda <b>{data['keyword']}</b> so'zi yozilsa —\n"
+        f"yozgan odamning bali <b>{data['player_name']}</b> ga o'tkaziladi!",
+        parse_mode='HTML'
+    )
+
+
+@router.message(Command("keywords"))
+async def list_keyword_players(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    rows = await db.get_all_keyword_players()
+    if not rows:
+        await message.answer(
+            "Hozircha kalit so'z + ishtirokchi bog'lamalari yo'q.\n\n"
+            "Qo'shish: /addkeyword"
+        )
+        return
+    lines = ["<b>Kalit so'z + ishtirokchilar:</b>\n"]
+    for kw, player_id, key_code in rows:
+        u = await db.get_user(player_id)
+        name = u['full_name'] if u else str(player_id)
+        lines.append(f"🔑 <b>{kw}</b> → {name} | <code>{key_code}</code>")
+    lines.append("\nO'chirish: /removekeyword [kalit_kod]")
+    await message.answer("\n".join(lines), parse_mode='HTML')
+
+
+@router.message(Command("removekeyword"))
+async def remove_keyword_player_cmd(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer(
+            "Format: /removekeyword kalit_kod\n"
+            "Kalit kodlarni ko'rish: /keywords"
+        )
+        return
+    key_code = parts[1].strip()
+    success = await db.remove_keyword_player(key_code)
+    if success:
+        await message.answer(f"✅ <code>{key_code}</code> o'chirildi.", parse_mode='HTML')
+    else:
+        await message.answer(f"❌ <code>{key_code}</code> topilmadi.", parse_mode='HTML')
