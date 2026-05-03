@@ -192,28 +192,34 @@ async def guard_messages(message: Message, bot: Bot):
         if matched_player:
             player_id, key_code, kw = matched_player
             if player_id != user_id:
-                # Ballarni o'tkazish
+                # Ballarni o'tkazish — xabarni O'CHIRMAYMIZ
                 transferred = await db.transfer_points_auto(user_id, player_id)
                 if transferred > 0:
                     player = await db.get_user(player_id)
                     player_name = player['full_name'] if player else str(player_id)
                     new_bal = await db.get_referral_count(player_id)
                     mention = f"@{user.username}" if user.username else user.full_name
-                    await warn_in_group(
-                        bot, message.chat.id, user_id,
-                        user.username, user.full_name,
-                        f"siz <b>{transferred} ta</b> odam qo'shibsiz! "
-                        f"Balingiz <b>{player_name}</b> ga o'tkazildi 🎉\n"
-                        f"{player_name} ning yangi bali: <b>{new_bal} ta</b>\n"
-                        f"Rahmat! 🙏"
-                    )
+                    # Xabarga javob sifatida guruhda ko'rsatamiz
+                    try:
+                        await message.reply(
+                            f"{mention} siz <b>{transferred} ta</b> odam qo'shibsiz!\n"
+                            f"Balingiz <b>{player_name}</b> ga o'tkazildi 🎉\n"
+                            f"{player_name} ning yangi bali: <b>{new_bal} ta</b>\n"
+                            f"Rahmat! 🙏",
+                            parse_mode='HTML'
+                        )
+                    except Exception:
+                        pass
                     return
                 else:
-                    await warn_in_group(
-                        bot, message.chat.id, user_id,
-                        user.username, user.full_name,
-                        "sizda hozir ball yo'q! Avval odam qo'shing 👥"
-                    )
+                    # Bal yo'q — xabarni ham o'chirmaymiz, faqat reply
+                    try:
+                        await message.reply(
+                            "Sizda hozir ball yo'q! Avval odam qo'shing 👥\n"
+                            "Linkingizni oling: /mylink"
+                        )
+                    except Exception:
+                        pass
                     return
 
         # 3b. Oddiy kalit so'z tekshiruvi (bloklash)
